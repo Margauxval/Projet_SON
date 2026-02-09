@@ -23,6 +23,8 @@ AudioConnection patch3(mySampler, 0, audioOut, 1);
 void setup() {
   pinMode(buttonPin, INPUT_PULLUP);
   AudioMemory(120);
+  pinMode(13, OUTPUT);
+  Serial.begin(9600);
   
   sgtl5000.enable();
   sgtl5000.inputSelect(AUDIO_INPUT_MIC);
@@ -53,12 +55,19 @@ void loop() {
 
 // --- Callbacks MIDI ---
 void handleNoteOn(byte channel, byte note, byte velocity) {
-  // Convertir le numéro de note MIDI en fréquence (Hz)
+  digitalWrite(13, HIGH); 
+  Serial.print("Note reçue ! Note : ");
+  Serial.println(note);
+  
   float frequency = 440.0 * pow(2.0, (note - 69) / 12.0);
   mySampler.setParamValue("freq", frequency);
   mySampler.setParamValue("gate", 1);
 }
 
 void handleNoteOff(byte channel, byte note, byte velocity) {
+  // Cette ligne éteint la LED quand tu lâches la touche
+  digitalWrite(13, LOW); 
+
   mySampler.setParamValue("gate", 0);
 }
+
