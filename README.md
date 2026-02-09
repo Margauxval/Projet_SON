@@ -1,7 +1,7 @@
 # Projet_SON
 
 ### Recommendations prof
-- controler en MIDI librairie USB
+- controler teensy en MIDI librairie USB
 - chaque touche du clavier ordi fait un son
 - carte SD (exemple cours) 
 
