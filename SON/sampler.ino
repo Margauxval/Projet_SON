@@ -1,73 +1,121 @@
 #include <Audio.h>
-#include <Wire.h>
 #include <SD.h>
-#include <SPI.h>
-#include "sampler.h" // Le fichier généré par l'export Faust
+#include <Bounce.h>
+#include <MIDI.h>  // juste pour préparer futur flux MIDI
 
-// --- Hardware Pins ---
-const int buttonPin = 0;      // Bouton sur Pin 0
-const int potPin = A0;        // Potentiomètre sur Pin A0
-const int chipSelect = BUILTIN_SDCARD;
+// === Audio ===
+AudioInputI2S        micInput;
+AudioRecordQueue     recorder;
+AudioOutputI2S       audioOutput;  // Pour écouter le micro si tu veux
+AudioConnection      patchCord1(micInput, 0, recorder, 0);
+AudioConnection      patchCord2(micInput, 0, audioOutput, 0);
+AudioConnection      patchCord3(micInput, 1, audioOutput, 1);
 
-// --- Objets Audio ---
-sampler mySampler;
-AudioInputI2S            micInput;
-AudioOutputI2S           audioOut;
-AudioControlSGTL5000     sgtl5000;
+AudioControlSGTL5000 audioShield;
 
-// Connexions
-AudioConnection patch1(micInput, 0, mySampler, 0);
-AudioConnection patch2(mySampler, 0, audioOut, 0);
-AudioConnection patch3(mySampler, 0, audioOut, 1);
+// === Bouton ===
+const int buttonPin = 0;
+Bounce button(buttonPin, 10);
 
+// === SD / WAV ===
+File wavFile;
+const int chipSelect = 10;
+bool isRecording = false;
+
+// === MIDI USB natif (préparation) ===
+MIDI_CREATE_DEFAULT_INSTANCE();  // pas utilisé pour l'instant
+
+// ================= HEADER WAV =================
+void writeWavHeader(File &file) {
+  file.seek(0);
+  file.write("RIFF", 4);
+  uint32_t chunkSize = 36;
+  file.write((uint8_t*)&chunkSize, 4);
+  file.write("WAVE", 4);
+  file.write("fmt ", 4);
+  uint32_t subchunk1Size = 16;
+  file.write((uint8_t*)&subchunk1Size, 4);
+  uint16_t audioFormat = 1;
+  uint16_t channels = 1;
+  uint32_t sampleRate = 44100;
+  uint16_t bitsPerSample = 16;
+  uint32_t byteRate = sampleRate * channels * bitsPerSample / 8;
+  uint16_t blockAlign = channels * bitsPerSample / 8;
+  file.write((uint8_t*)&audioFormat, 2);
+  file.write((uint8_t*)&channels, 2);
+  file.write((uint32_t*)&sampleRate, 4);
+  file.write((uint32_t*)&byteRate, 4);
+  file.write((uint16_t*)&blockAlign, 2);
+  file.write((uint16_t*)&bitsPerSample, 2);
+  file.write("data", 4);
+  uint32_t dataSize = 0;
+  file.write((uint8_t*)&dataSize, 4);
+}
+
+void finalizeWavFile(File &file) {
+  uint32_t fileSize = file.size();
+  uint32_t dataChunkSize = fileSize - 44;
+
+  file.seek(4);
+  uint32_t chunkSize = fileSize - 8;
+  file.write((uint8_t*)&chunkSize, 4);
+
+  file.seek(40);
+  file.write((uint32_t*)&dataChunkSize, 4);
+}
+
+// ================= SETUP =================
 void setup() {
-  pinMode(buttonPin, INPUT_PULLUP);
-  AudioMemory(120);
-  pinMode(13, OUTPUT);
   Serial.begin(9600);
-  
-  sgtl5000.enable();
-  sgtl5000.inputSelect(AUDIO_INPUT_MIC);
-  sgtl5000.micGain(30);
+  pinMode(buttonPin, INPUT);
 
-  // Initialisation SD (optionnel pour log ou sauvegarde)
-  if (!(SD.begin(chipSelect))) {
-    Serial.println("SD card failed");
+  AudioMemory(40);
+
+  audioShield.enable();
+  audioShield.volume(0.6);
+  audioShield.inputSelect(AUDIO_INPUT_MIC);
+  audioShield.micGain(30);
+
+  recorder.begin();
+
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Erreur SD !");
+  } else {
+    Serial.println("SD OK");
   }
 
-  // Initialisation MIDI USB
-  usbMIDI.setHandleNoteOn(handleNoteOn);
-  usbMIDI.setHandleNoteOff(handleNoteOff);
+  // MIDI.begin(MIDI_CHANNEL_OMNI); // à activer plus tard
 }
 
+// ================= LOOP =================
 void loop() {
-  // 1. Gestion du bouton d'enregistrement (Inversé car INPUT_PULLUP)
-  int recState = (digitalRead(buttonPin) == LOW) ? 1 : 0;
-  mySampler.setParamValue("Record", recState);
+  button.update();
 
-  // 2. Gestion du potentiomètre de Gain
-  float potValue = analogRead(potPin) / 1023.0;
-  mySampler.setParamValue("Gain", potValue);
+  // ===== START RECORD =====
+  if (button.read() == HIGH && !isRecording) {
+    Serial.println("Recording...");
+    SD.remove("REC1.WAV");  // Écrase l'ancien enregistrement
+    wavFile = SD.open("REC1.WAV", FILE_WRITE);
+    if (wavFile) {
+      writeWavHeader(wavFile);
+      isRecording = true;
+    } else {
+      Serial.println("Erreur ouverture fichier !");
+    }
+  }
 
-  // 3. Lecture MIDI USB
-  usbMIDI.read();
+  // ===== WRITE AUDIO =====
+  if (isRecording && recorder.available() > 0) {
+    int16_t *buffer = recorder.readBuffer();
+    wavFile.write((uint8_t*)buffer, 256);  // Écriture mono
+    recorder.freeBuffer();
+  }
+
+  // ===== STOP RECORD =====
+  if (button.read() == LOW && isRecording) {
+    finalizeWavFile(wavFile);
+    wavFile.close();
+    isRecording = false;
+    Serial.println("Stopped.");
+  }
 }
-
-// --- Callbacks MIDI ---
-void handleNoteOn(byte channel, byte note, byte velocity) {
-  digitalWrite(13, HIGH); 
-  Serial.print("Note reçue ! Note : ");
-  Serial.println(note);
-  
-  float frequency = 440.0 * pow(2.0, (note - 69) / 12.0);
-  mySampler.setParamValue("freq", frequency);
-  mySampler.setParamValue("gate", 1);
-}
-
-void handleNoteOff(byte channel, byte note, byte velocity) {
-  // Cette ligne éteint la LED quand tu lâches la touche
-  digitalWrite(13, LOW); 
-
-  mySampler.setParamValue("gate", 0);
-}
-
