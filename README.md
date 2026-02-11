@@ -15,7 +15,8 @@
 
 ### Avancées 
 - on lit la carte SD
-- LA  carte SD enregistre le son quand on appuie sur le bouton !!!
+- La  carte SD enregistre le son quand on appuie sur le bouton !!!
+- On entends le son qu'on enregistre 
 
 ### Améliorations
 - echo (potentiometre ?)
