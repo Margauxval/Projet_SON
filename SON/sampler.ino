@@ -1,15 +1,18 @@
 #include <Audio.h>
 #include <SD.h>
 #include <Bounce.h>
-#include <MIDI.h>  // juste pour préparer futur flux MIDI
 
 // === Audio ===
 AudioInputI2S        micInput;
 AudioRecordQueue     recorder;
-AudioOutputI2S       audioOutput;  // Pour écouter le micro si tu veux
-AudioConnection      patchCord1(micInput, 0, recorder, 0);
-AudioConnection      patchCord2(micInput, 0, audioOutput, 0);
-AudioConnection      patchCord3(micInput, 1, audioOutput, 1);
+AudioPlaySdWav       playWav;        // Lecture du sample
+AudioOutputI2S       audioOutput;
+
+AudioConnection      patchCord1(micInput, 0, recorder, 0); // enregistrement
+AudioConnection      patchCord2(micInput, 0, audioOutput, 0); // monitoring gauche
+AudioConnection      patchCord3(micInput, 1, audioOutput, 1); // monitoring droite
+AudioConnection      patchCord4(playWav, 0, audioOutput, 0);  // lecture gauche
+AudioConnection      patchCord5(playWav, 0, audioOutput, 1);  // lecture droite
 
 AudioControlSGTL5000 audioShield;
 
@@ -21,9 +24,6 @@ Bounce button(buttonPin, 10);
 File wavFile;
 const int chipSelect = 10;
 bool isRecording = false;
-
-// === MIDI USB natif (préparation) ===
-MIDI_CREATE_DEFAULT_INSTANCE();  // pas utilisé pour l'instant
 
 // ================= HEADER WAV =================
 void writeWavHeader(File &file) {
@@ -61,15 +61,15 @@ void finalizeWavFile(File &file) {
   file.write((uint8_t*)&chunkSize, 4);
 
   file.seek(40);
-  file.write((uint32_t*)&dataChunkSize, 4);
+  file.write((uint8_t*)&dataChunkSize, 4);
 }
 
 // ================= SETUP =================
 void setup() {
   Serial.begin(9600);
-  pinMode(buttonPin, INPUT);
+  pinMode(buttonPin, INPUT);  // bouton avec pulldown externe
 
-  AudioMemory(40);
+  AudioMemory(60);  // mémoire audio pour enregistrement + playback
 
   audioShield.enable();
   audioShield.volume(0.6);
@@ -83,8 +83,12 @@ void setup() {
   } else {
     Serial.println("SD OK");
   }
-
-  // MIDI.begin(MIDI_CHANNEL_OMNI); // à activer plus tard
+  
+  if (SD.exists("REC1.WAV")) {
+    Serial.println("Lecture test...");
+    playWav.play("REC1.WAV");
+}
+  usbMIDI.begin();  // USB MIDI natif
 }
 
 // ================= LOOP =================
@@ -92,9 +96,9 @@ void loop() {
   button.update();
 
   // ===== START RECORD =====
-  if (button.read() == HIGH && !isRecording) {
+  if (button.read() == HIGH && !isRecording) { // bouton appuyé
     Serial.println("Recording...");
-    SD.remove("REC1.WAV");  // Écrase l'ancien enregistrement
+    SD.remove("REC1.WAV");
     wavFile = SD.open("REC1.WAV", FILE_WRITE);
     if (wavFile) {
       writeWavHeader(wavFile);
@@ -107,15 +111,34 @@ void loop() {
   // ===== WRITE AUDIO =====
   if (isRecording && recorder.available() > 0) {
     int16_t *buffer = recorder.readBuffer();
-    wavFile.write((uint8_t*)buffer, 256);  // Écriture mono
+    wavFile.write((uint8_t*)buffer, 256);
     recorder.freeBuffer();
   }
 
   // ===== STOP RECORD =====
-  if (button.read() == LOW && isRecording) {
+  if (button.read() == LOW && isRecording) { // bouton relâché
     finalizeWavFile(wavFile);
     wavFile.close();
     isRecording = false;
     Serial.println("Stopped.");
+  }
+
+  // ===== USB MIDI =====
+  while (usbMIDI.read()) {
+      byte type = usbMIDI.getType();
+      byte data1 = usbMIDI.getData1();
+      byte data2 = usbMIDI.getData2();
+
+      if (type == usbMIDI.NoteOn && data2 > 0) {
+          Serial.print("NoteOn: "); Serial.print(data1);
+          Serial.print(" velocity: "); Serial.println(data2);
+
+          // joue le sample à chaque NoteOn, sans vérifier s'il est déjà en train de jouer
+          playWav.play("REC1.wav");
+      } 
+      else if (type == usbMIDI.NoteOff || (type == usbMIDI.NoteOn && data2 == 0)) {
+          Serial.print("NoteOff: "); Serial.println(data1);
+          playWav.stop();  // stoppe le sample
+      }
   }
 }
