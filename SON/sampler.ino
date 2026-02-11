@@ -10,8 +10,8 @@ AudioOutputI2S       audioOutput;
 
 AudioConnection      patchCord1(micInput, 0, recorder, 0); // enregistrement
 AudioConnection      patchCord2(micInput, 0, audioOutput, 0); // monitoring gauche
-AudioConnection      patchCord3(micInput, 1, audioOutput, 1); // monitoring droite
-AudioConnection      patchCord4(playWav, 0, audioOutput, 0);  // lecture gauche
+//AudioConnection      patchCord3(micInput, 1, audioOutput, 1); // monitoring droite
+//AudioConnection      patchCord4(playWav, 0, audioOutput, 0);  // lecture gauche
 AudioConnection      patchCord5(playWav, 0, audioOutput, 1);  // lecture droite
 
 AudioControlSGTL5000 audioShield;
