@@ -1,34 +1,37 @@
+//cross fade
 import("stdfaust.lib");
 
-// ==========================
-// CONFIGURATION
-bufSize = 48000; // 1 seconde max → ~192 kB sur Teensy
+// --- CONFIGURATION ---
+bufSize = 48000; // Taille du buffer (1 seconde)
 
-// ==========================
-// MIDI / Teensy parameters
-note = nentry("note", 69, 0, 127, 1); // pitch exposé
-gate = nentry("gate", 0, 0, 1, 1);    // gate exposé
+note   = nentry("note", 69, 0, 127, 1);
+gate   = nentry("gate", 0, 0, 1, 1) : si.smoo;
+record = nentry("record", 0, 0, 1, 1);
 
-ratio = pow(2, (note - 69)/12.0);
+// Calcul du ratio de lecture (vitesse)
+ratio = pow(2.0, (note - 69.0) / 12.0);
 
-// ==========================
-// CURSEURS
-// writeIndex : où écrire le signal entrant dans le ruban
-writePhase = os.phasor(1.0 / bufSize);
-writeIndex = writePhase * bufSize;
+// --- 1. ENREGISTREMENT ---
+// L'index d'écriture s'arrête à la fin du buffer
+writeIndex = (+(1) : *(record) : min(bufSize-1)) ~ _;
 
-// readIndex : où lire dans le ruban
-// Multiplié par gate pour ne lire que lorsqu’une note est jouée
-readPhase = gate * os.phasor(ratio / 1.0);  // vitesse MIDI contrôlée par note
-readIndex = readPhase * bufSize;
+// --- 2. LECTURE AVEC DOUBLE PHASOR (STRATÉGIE DE BOUCLE) ---
+// On calcule la fréquence nécessaire pour lire tout le buffer à la vitesse 'ratio'
+loopFreq = (ratio * ma.SR) / bufSize;
 
-// ==========================
-// TABLE / RUBAN
-// Le ruban stocke le signal micro + sample
-ruban = rwtable(bufSize, 0.0);
+// On génère deux têtes de lecture déphasées de 180° (0.5)
+phase1 = os.phasor(1.0, loopFreq) * (gate > 0.001);
+phase2 = ma.modulo(phase1 + 0.5, 1.0) * (gate > 0.001);
 
-// ==========================
-// PROCESS
-// _ = signal d'entrée (micro + sample via mixer)
-// On écrit le signal dans le ruban et on lit en même temps
-process = _, writeIndex, readIndex : ruban;
+// --- 3. FENÊTRES DE CROSSFADE ---
+// On utilise une forme de sinus pour que la somme des puissances soit constante (pas de baisse de volume)
+gain1 = pow(sin(ma.PI * phase1), 2);
+gain2 = pow(sin(ma.PI * phase2), 2);
+
+// --- 4. ACCÈS À LA TABLE ---
+// On définit la table et on lit aux deux positions simultanément
+readTable(p) = rwtable(bufSize, 0.0, int(writeIndex), _, int(p * (bufSize-1)));
+
+// --- 5. SORTIE ---
+// Mixage des deux têtes de lecture
+process = (readTable(phase1) * gain1 + readTable(phase2) * gain2) * gate;
