@@ -1,28 +1,5 @@
 # Projet_SON
 
-### Recommendations prof
-- controler teensy en MIDI librairie USB
-- chaque touche du clavier ordi fait un son
-- carte SD (exemple cours) 
-
-### Nos idées
-- bouton quand on appui ça enregistre
-- une fois enregistrer reconnaissance de fréquence
-- déploiement des fréquences pour faire les notes
-- ajuster le gain (potentiometre ?)
-- il n'y a plus qu'à jouer
-- utilisation clavier VMPK
-
-### Avancées 
-- on lit la carte SD
-- La  carte SD enregistre le son quand on appuie sur le bouton !!!
-- On entends le son qu'on enregistre 
-
-### Améliorations
-- echo (potentiometre ?)
-- appui long enregistre le son, possibilté de garder plusieurs sons en même temps pour le choisir dans VMPK
-- effets (orgue, canard, baleine...)
-
 # Description du projet
 
 Ce programme transforme une Teensy en un sampler simple et réactif capable d’enregistrer un son, de le stocker temporairement, puis de le rejouer sous forme de notes MIDI via un clavier virtuel comme VMPK. L’ensemble repose sur la Teensy Audio Library, qui fournit les outils nécessaires pour la capture, le traitement et la lecture du signal audio.
@@ -52,6 +29,15 @@ Le fonctionnement repose sur trois éléments principaux :
 
 **4. Réenregistrer**  
 - Appuyer à nouveau sur le bouton pour capturer un nouveau son.
+
+---
+
+# Améliorations
+
+- effets (echo, orgue, etc.)
+- polyphonie
+- possibilité d'enregistrer et d'utiliser plusieurs sons
+- utilisation d'un clavier matériel 
 
 
 
