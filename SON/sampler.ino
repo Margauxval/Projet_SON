@@ -29,7 +29,7 @@ void setup() {
   audioShield.inputSelect(AUDIO_INPUT_MIC); // écoute micro
   audioShield.micGain(40); // amplification signal micro (40dB)
 
-  mixer1.gain(0, 1.0); // volume entrée 0 du mixeur = 100%
+  mixer1.gain(0, 0.5); // volume entrée 0 du mixeur = 50%
 
   usbMIDI.begin(); // initialise pile MIDI (teensy = instrument)
   Serial.println("Sampler Pret...");
